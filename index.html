@@ -106,6 +106,7 @@
   .season-card .n{font-family:"Playfair Display",serif;font-weight:900;font-size:1.5rem;margin-top:.3rem}
   .season-card .pct{font-size:.72rem;color:var(--muted);margin-top:.15rem}
   .season-card .tk{font-size:.78rem;color:var(--ink);margin-top:.5rem;border-top:1px solid var(--line);padding-top:.5rem}
+  .season-card .tk2{font-size:.78rem;color:var(--ink);margin-top:.3rem}
 
   .empty{padding:2rem;text-align:center;color:var(--muted);font-style:italic}
   .note{font-size:.74rem;color:var(--muted);font-style:italic;margin-top:.6rem}
@@ -163,7 +164,7 @@
 <script>
 const RESERVAS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTn2zYB0Xr5aqLFGPF4BhIHCqtOezfQHQBEarkt9UkDQTotI045SXJw1zxXnXmCLdgkzA_jtHdDSRte/pub?gid=1604280258&single=true&output=csv";
 const OBJETIVOS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTn2zYB0Xr5aqLFGPF4BhIHCqtOezfQHQBEarkt9UkDQTotI045SXJw1zxXnXmCLdgkzA_jtHdDSRte/pub?gid=1362706611&single=true&output=csv";
-const DEMO_RESERVAS = "G\u00e9nero,Estado o provincia,Fecha de nacimiento,Fecha de la reserva,Fecha de llegada,Salida,N\u00famero de noches,Total general,Estado\nFemenino,San Luis,14/09/1989,05/08/2026,24/12/2026,27/12/2026,3,3200000,Confirmado\nMasculino,Buenos Aires,08/10/1969,08/08/2026,30/12/2026,03/01/2027,4,4100000,Confirmado\nFemenino,Cordoba,22/03/1995,12/08/2026,31/12/2026,02/01/2027,2,2600000,Confirmado\nMasculino,Santa Fe,01/01/1980,15/08/2026,15/01/2027,18/01/2027,3,2950000,Confirmado\nN/A,Entre Rios,30/06/2001,18/08/2026,03/03/2027,06/03/2027,3,2100000,Confirmado\nFemenino,Buenos Aires,19/11/1975,20/08/2026,25/03/2027,28/03/2027,3,2400000,Confirmado\nMasculino,Chubut,05/05/1990,22/08/2026,24/12/2026,26/12/2026,2,2050000,Confirmado\nFemenino,Buenos Aires Capital Federal,17/02/1988,25/08/2026,10/02/2027,13/02/2027,3,2780000,Confirmado\nMasculino,Cordoba,09/09/1965,27/08/2026,22/02/2027,25/02/2027,3,2600000,Confirmado\nFemenino,San Luis,03/12/1998,29/08/2026,26/12/2026,29/12/2026,3,3050000,Confirmado\n";
+const DEMO_RESERVAS = "G\u00e9nero,Estado o provincia,Fecha de nacimiento,Fecha de la reserva,Fecha de llegada,Salida,N\u00famero de noches,Total general,Estado,Adultos,Ni\u00f1os\nFemenino,San Luis,14/09/1989,05/08/2026,24/12/2026,27/12/2026,3,\"$3,200,000.00\",Confirmado,2,0\nMasculino,Buenos Aires,08/10/1969,08/08/2026,30/12/2026,03/01/2027,4,\"$4,100,000.00\",Confirmado,2,2\nFemenino,Cordoba,22/03/1995,12/08/2026,31/12/2026,02/01/2027,2,\"$2,600,000.00\",Confirmado,2,0\nMasculino,Santa Fe,01/01/1980,15/08/2026,15/01/2027,18/01/2027,3,\"$2,950,000.00\",Confirmado,4,1\nN/A,Entre Rios,30/06/2001,18/08/2026,03/03/2027,06/03/2027,3,\"$2,100,000.00\",Confirmado,1,0\nFemenino,Buenos Aires,19/11/1975,20/08/2026,25/03/2027,28/03/2027,3,\"$2,400,000.00\",Confirmado,2,1\nMasculino,Chubut,05/05/1990,22/08/2026,24/12/2026,26/12/2026,2,\"$2,050,000.00\",Confirmado,2,0\nFemenino,Buenos Aires Capital Federal,17/02/1988,25/08/2026,10/02/2027,13/02/2027,3,\"$2,780,000.00\",Confirmado,2,2\nMasculino,Cordoba,09/09/1965,27/08/2026,22/02/2027,25/02/2027,3,\"$2,600,000.00\",Confirmado,3,0\nFemenino,San Luis,03/12/1998,29/08/2026,26/12/2026,29/12/2026,3,\"$3,050,000.00\",Confirmado,2,0\n";
 const DEMO_OBJETIVOS = "Mes,Reservas a\u00f1o pasado,Ticket promedio a\u00f1o pasado\nAgosto,8,2400000\nSeptiembre,,\n";
 const SESSION_HOURS = 24;
 const SESSION_KEY = "eleton_dash_session";
@@ -210,6 +211,8 @@ const ALIAS_RESERVAS = {
   "numero de noches":"noches", "noches":"noches",
   "total general":"total", "total":"total",
   "estado":"estado_reserva",
+  "adultos":"adultos",
+  "ninos":"ninos", "niños":"ninos",
 };
 const ALIAS_OBJETIVOS = {
   "mes":"mes",
@@ -226,8 +229,27 @@ function parseDate(s){
   const d = new Date(+m[3], +m[2]-1, +m[1]);
   return isNaN(d.getTime()) ? null : d;
 }
-const parseMoney = s => { const n = parseInt(String(s||"").replace(/[^0-9]/g,""),10); return isNaN(n)?0:n; };
-const parseNum = s => { const n = parseFloat(String(s||"").replace(",",".")); return isNaN(n)?0:n; };
+const parseMoney = s => {
+  let str = String(s==null?"":s).trim();
+  if(!str) return null;
+  str = str.replace(/[^\d.,-]/g,"");
+  if(!str) return null;
+  const lastComma = str.lastIndexOf(",");
+  const lastDot = str.lastIndexOf(".");
+  if(lastComma>-1 && lastDot>-1){
+    if(lastDot > lastComma) str = str.replace(/,/g,"");            // "$2,395,800.00" → el punto es decimal
+    else str = str.replace(/\./g,"").replace(",", ".");            // "9.220.200,50" → la coma es decimal
+  } else if(lastComma>-1){
+    str = str.replace(",", "."); // única coma → decimal
+  } else if(lastDot>-1){
+    const parts = str.split(".");
+    if(parts.length>2 || (parts[1] && parts[1].length>2)) str = parts.join(""); // puntos de miles
+    // un único punto con ≤2 decimales se conserva como decimal real
+  }
+  const n = parseFloat(str);
+  return isNaN(n) ? null : n;
+};
+const parseNum = s => { const str=String(s==null?"":s).trim(); if(!str) return null; const n = parseFloat(str.replace(",", ".")); return isNaN(n)?null:n; };
 const fmtMoney = n => "$"+Math.round(n).toLocaleString("es-AR");
 
 /* ══════ Clasificación por temporada (según Fecha de llegada / Salida) ══════ */
@@ -281,6 +303,17 @@ async function fetchCSV(url, fallback, aliasMap){
   return {rows: csvToObjects(fallback, aliasMap), demo:true};
 }
 
+function classifyGrupo(adultos, ninos){
+  const a = adultos!=null ? adultos : 0;
+  const n = ninos!=null ? ninos : 0;
+  const total = a + n;
+  if(adultos==null && ninos==null) return "Sin datos";
+  if(total<=0) return "Sin datos";
+  if(total===1) return "Individual";
+  if(total===2) return "Pareja";
+  return "Familia";
+}
+
 let EXCLUDED_COUNT = 0;
 function buildReserva(o){
   const fecha_venta = parseDate(o.fecha_venta);
@@ -293,9 +326,13 @@ function buildReserva(o){
   const noches = parseNum(o.noches);
   const fecha_nac = parseDate(o.fecha_nacimiento);
   const edad = calcAge(fecha_nac, fecha_llegada);
+  const adultos = parseNum(o.adultos);
+  const ninos = parseNum(o.ninos);
   return {
     genero: (o.genero||"").trim(),
     provincia: (o.provincia||"").trim(),
+    adultos, ninos,
+    grupo: classifyGrupo(adultos, ninos),
     fecha_venta, fecha_llegada, fecha_salida,
     noches, total, edad,
     temporada: classifySeason(fecha_llegada, fecha_salida),
@@ -305,7 +342,7 @@ function buildReserva(o){
   };
 }
 
-function average(arr){ return arr.length? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
+function average(arr){ const v = arr.filter(x=>x!=null && !isNaN(x)); return v.length? v.reduce((a,b)=>a+b,0)/v.length : 0; }
 
 function renderDelta(actual, previo){
   if(previo==null || previo===0 || isNaN(previo)) return {html:'<span class="delta na">Sin dato del año pasado</span>', flag:'<span class="objflag na">Cargá el objetivo</span>'};
@@ -383,6 +420,13 @@ function render(reservas, objetivos){
       return { nombre:s, n:items.length, pct: totalReservas? (items.length/totalReservas*100):0, ticket: average(items.map(r=>r.total)) };
     }).filter(s=>s.n>0);
 
+    const GRUPO_ORDER = ["Pareja","Familia","Individual","Sin datos"];
+    const grupoStats = GRUPO_ORDER.map(g=>{
+      const items = cohort.filter(r=>r.grupo===g);
+      return { nombre:g, n:items.length, pct: totalReservas? (items.length/totalReservas*100):0,
+               ticket: average(items.map(r=>r.total)), noches: average(items.map(r=>r.noches)) };
+    }).filter(s=>s.n>0);
+
     content.innerHTML = `
       <section>
         <h2 class="sec-h">Resumen del mes</h2>
@@ -422,6 +466,21 @@ function render(reservas, objetivos){
               <div class="tk">Ticket prom.: <strong>${fmtMoney(s.ticket)}</strong></div>
             </div>`).join("")}
         </div>
+      </section>
+
+      <section>
+        <h2 class="sec-h">Perfil por tipo de reserva</h2>
+        <div class="season-grid">
+          ${grupoStats.map(s=>`
+            <div class="season-card">
+              <div class="nm">${esc(s.nombre)}</div>
+              <div class="n">${s.n}</div>
+              <div class="pct">${s.pct.toFixed(0)}% del mes</div>
+              <div class="tk">Ticket prom.: <strong>${fmtMoney(s.ticket)}</strong></div>
+              <div class="tk2">Noches prom.: <strong>${s.noches.toFixed(1)}</strong></div>
+            </div>`).join("")}
+        </div>
+        <p style="font-size:.76rem;color:var(--muted);margin-top:.6rem">Pareja = 2 personas (adultos + niños) · Familia = más de 2 · Individual = 1. Basado en las columnas Adultos y Niños.</p>
       </section>
 
       <section>
