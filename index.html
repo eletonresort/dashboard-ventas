@@ -165,7 +165,7 @@
 const RESERVAS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTn2zYB0Xr5aqLFGPF4BhIHCqtOezfQHQBEarkt9UkDQTotI045SXJw1zxXnXmCLdgkzA_jtHdDSRte/pub?gid=1687753227&single=true&output=csv";
 const OBJETIVOS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTn2zYB0Xr5aqLFGPF4BhIHCqtOezfQHQBEarkt9UkDQTotI045SXJw1zxXnXmCLdgkzA_jtHdDSRte/pub?gid=964930654&single=true&output=csv";
 const DEMO_RESERVAS = "G\u00e9nero,Estado o provincia,Fecha de nacimiento,Fecha de la reserva,Fecha de llegada,Salida,N\u00famero de noches,Total general,Estado,Adultos,Ni\u00f1os\nFemenino,San Luis,14/09/1989,05/08/2026,24/12/2026,27/12/2026,3,\"$3,200,000.00\",Confirmado,2,0\nMasculino,Buenos Aires,08/10/1969,08/08/2026,30/12/2026,03/01/2027,4,\"$4,100,000.00\",Confirmado,2,2\nFemenino,Cordoba,22/03/1995,12/08/2026,31/12/2026,02/01/2027,2,\"$2,600,000.00\",Confirmado,2,0\nMasculino,Santa Fe,01/01/1980,15/08/2026,15/01/2027,18/01/2027,3,\"$2,950,000.00\",Confirmado,4,1\nN/A,Entre Rios,30/06/2001,18/08/2026,03/03/2027,06/03/2027,3,\"$2,100,000.00\",Confirmado,1,0\nFemenino,Buenos Aires,19/11/1975,20/08/2026,25/03/2027,28/03/2027,3,\"$2,400,000.00\",Confirmado,2,1\nMasculino,Chubut,05/05/1990,22/08/2026,24/12/2026,26/12/2026,2,\"$2,050,000.00\",Confirmado,2,0\nFemenino,Buenos Aires Capital Federal,17/02/1988,25/08/2026,10/02/2027,13/02/2027,3,\"$2,780,000.00\",Confirmado,2,2\nMasculino,Cordoba,09/09/1965,27/08/2026,22/02/2027,25/02/2027,3,\"$2,600,000.00\",Confirmado,3,0\nFemenino,San Luis,03/12/1998,29/08/2026,26/12/2026,29/12/2026,3,\"$3,050,000.00\",Confirmado,2,0\n";
-const DEMO_OBJETIVOS = "Mes,Reservas a\u00f1o pasado,Ticket promedio a\u00f1o pasado\nAgosto,8,2400000\nSeptiembre,,\n";
+const DEMO_OBJETIVOS = "Mes,Reservas a\u00f1o pasado,Ticket promedio a\u00f1o pasado,Inversi\u00f3n Meta actual,Inversi\u00f3n Google actual,Inversi\u00f3n Meta a\u00f1o pasado,Inversi\u00f3n Google a\u00f1o pasado\nAgosto,8,2400000,450000,300000,380000,250000\nSeptiembre,,,,,,\n";
 const SESSION_HOURS = 24;
 const SESSION_KEY = "eleton_dash_session";
 let CONFIG_PASSWORD = "eleton2026";
@@ -218,6 +218,10 @@ const ALIAS_OBJETIVOS = {
   "mes":"mes",
   "reservas ano pasado":"reservas_prev",
   "ticket promedio ano pasado":"ticket_prev",
+  "inversion meta actual":"meta_actual",
+  "inversion google actual":"google_actual",
+  "inversion meta ano pasado":"meta_prev",
+  "inversion google ano pasado":"google_prev",
   "valor":"valor",
 };
 
@@ -344,15 +348,18 @@ function buildReserva(o){
 
 function average(arr){ const v = arr.filter(x=>x!=null && !isNaN(x)); return v.length? v.reduce((a,b)=>a+b,0)/v.length : 0; }
 
-function renderDelta(actual, previo){
+function renderDelta(actual, previo, invertGood){
   if(previo==null || previo===0 || isNaN(previo)) return {html:'<span class="delta na">Sin dato del año pasado</span>', flag:'<span class="objflag na">Cargá el objetivo</span>'};
   const pct = ((actual - previo) / previo) * 100;
-  const good = pct >= 0;
-  const arrow = good ? "▲" : "▼";
+  let good = pct >= 0;
+  if(invertGood) good = !good;
+  const arrow = pct >= 0 ? "▲" : "▼";
   const cls = good ? "good" : "bad";
+  const flagGoodTxt = invertGood ? "✅ Más eficiente que el año pasado" : "✅ Dentro de objetivo";
+  const flagBadTxt = invertGood ? "⚠️ Menos eficiente que el año pasado" : "⚠️ Por debajo del objetivo";
   return {
     html: `<span class="delta ${cls}">${arrow} ${Math.abs(pct).toFixed(1)}%</span>`,
-    flag: `<span class="objflag ${cls}">${good?"✅ Dentro de objetivo":"⚠️ Por debajo del objetivo"}</span>`
+    flag: `<span class="objflag ${cls}">${good?flagGoodTxt:flagBadTxt}</span>`
   };
 }
 
@@ -415,6 +422,24 @@ function render(reservas, objetivos){
     const dR = renderDelta(totalReservas, reservasPrev);
     const dT = renderDelta(ticketProm, ticketPrev);
 
+    const metaActual = obj && obj.meta_actual!=="" ? parseMoney(obj.meta_actual) : null;
+    const googleActual = obj && obj.google_actual!=="" ? parseMoney(obj.google_actual) : null;
+    const metaPrev = obj && obj.meta_prev!=="" ? parseMoney(obj.meta_prev) : null;
+    const googlePrev = obj && obj.google_prev!=="" ? parseMoney(obj.google_prev) : null;
+    const hasActual = metaActual!=null || googleActual!=null;
+    const hasPrev = metaPrev!=null || googlePrev!=null;
+    const inversionActual = hasActual ? (metaActual||0)+(googleActual||0) : null;
+    const inversionPrev = hasPrev ? (metaPrev||0)+(googlePrev||0) : null;
+    let invDeltaTxt = "";
+    if(inversionActual!=null && inversionPrev){
+      const pctInv = ((inversionActual-inversionPrev)/inversionPrev)*100;
+      invDeltaTxt = `<span class="delta na">${pctInv>=0?"▲":"▼"} ${Math.abs(pctInv).toFixed(1)}% vs. año pasado</span>`;
+    }
+
+    const cpaActual = (inversionActual!=null && totalReservas>0) ? inversionActual/totalReservas : null;
+    const cpaPrev = (inversionPrev!=null && reservasPrev) ? inversionPrev/reservasPrev : null;
+    const dCPA = renderDelta(cpaActual, cpaPrev, true); // menor CPA = mejor
+
     const seasonStats = SEASON_ORDER.map(s=>{
       const items = cohort.filter(r=>r.temporada===s);
       return { nombre:s, n:items.length, pct: totalReservas? (items.length/totalReservas*100):0, ticket: average(items.map(r=>r.total)) };
@@ -451,6 +476,25 @@ function render(reservas, objetivos){
             <div class="lbl">Ticket promedio</div>
             <div class="obj-row"><span class="now">${fmtMoney(ticketProm)}</span>${ticketPrev!=null?`<span class="prev">vs. ${fmtMoney(ticketPrev)} el año pasado</span>`:""}</div>
             ${dT.html}<br>${dT.flag}
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="sec-h">Inversión en pauta</h2>
+        <div class="obj-grid">
+          <div class="obj-card">
+            <div class="lbl">Inversión total (Meta + Google)</div>
+            <div class="obj-row"><span class="now">${inversionActual!=null?fmtMoney(inversionActual):"—"}</span>${inversionPrev!=null?`<span class="prev">vs. ${fmtMoney(inversionPrev)} el año pasado</span>`:""}</div>
+            <div class="sub" style="margin-top:.4rem">Meta: ${metaActual!=null?fmtMoney(metaActual):"—"} · Google: ${googleActual!=null?fmtMoney(googleActual):"—"}</div>
+            ${inversionPrev!=null?`<div class="sub">Año pasado — Meta: ${metaPrev!=null?fmtMoney(metaPrev):"—"} · Google: ${googlePrev!=null?fmtMoney(googlePrev):"—"}</div>`:""}
+            ${invDeltaTxt}
+          </div>
+          <div class="obj-card">
+            <div class="lbl">Costo por adquisición (CPA)</div>
+            <div class="obj-row"><span class="now">${cpaActual!=null?fmtMoney(cpaActual):"—"}</span>${cpaPrev!=null?`<span class="prev">vs. ${fmtMoney(cpaPrev)} el año pasado</span>`:""}</div>
+            <div class="sub" style="margin-top:.4rem">Inversión total ÷ reservas del mes</div>
+            ${dCPA.html}<br>${dCPA.flag}
           </div>
         </div>
       </section>
