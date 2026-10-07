@@ -606,8 +606,6 @@ function render(reservas, objetivos){
 
 
 /* ══════ Visión macro: CPA vs ticket promedio ══════ */
-const MARGIN_KEY = "eleton_dash_margen";
-let MARGEN_SHEET = null; // % bruto leido de la hoja Objetivos (fila "margen")
 const fmtM = n => n>=1e6 ? "$"+(n/1e6).toFixed(n>=1e7?1:2).replace(".",",")+" M" : "$"+Math.round(n/1e3)+" k";
 const fmtP = (n,d=1) => n.toFixed(d).replace(".",",")+"%";
 
@@ -626,7 +624,8 @@ function macroSeries(reservas, objetivos){
     if(!inv) return;
     const items = byKey[k];
     const ticket = average(items.map(r=>r.total));
-    byName[mi] = { key:k, mes:MESES_CAP[mi], inv, meta:meta||0, goog:goog||0, n:items.length, ticket,
+    const prevN = obj.reservas_prev!=="" && obj.reservas_prev!=null ? parseNum(obj.reservas_prev) : null;
+    byName[mi] = { key:k, mes:MESES_CAP[mi], prevN: prevN>0?prevN:null, inv, meta:meta||0, goog:goog||0, n:items.length, ticket,
                    cpa: inv/items.length, ingresos: ticket*items.length };
   });
   const arr = Object.values(byName).sort((a,b)=>a.key<b.key?-1:1);
@@ -673,20 +672,21 @@ function comboChart(series, o){
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.aria)}">${g}</svg>`;
 }
 
-/* CPA como % del ticket, contra el techo de equilibrio */
-function pctChart(series, margen){
+/* CPA como % del ticket, contra los dos topes */
+function pctChart(series, tB, tE){
   const W=640,H=300,L=52,R=20,T=26,B=40, iw=W-L-R, ih=H-T-B, n=series.length;
-  const maxV = Math.max(margen*1.2, ...series.map(s=>s.cpaPct), ...series.map(s=>s.margPct||0))*1.1;
+  const maxV = Math.max(tE*1.25, ...series.map(s=>s.cpaPct), ...series.map(s=>s.margPct||0))*1.1;
   const slot = iw/n, x = i => L + slot*i + slot/2, y = v => T + ih - v/maxV*ih;
-  let g = `<rect x="${L}" y="${y(margen)}" width="${iw}" height="${T+ih-y(margen)}" fill="#e5f4ea"/>`;
-  g += `<rect x="${L}" y="${T}" width="${iw}" height="${y(margen)-T}" fill="#fbe9e7"/>`;
+  let g = `<rect x="${L}" y="${y(tB)}" width="${iw}" height="${T+ih-y(tB)}" fill="#e5f4ea"/>`;
+  g += `<rect x="${L}" y="${y(tE)}" width="${iw}" height="${y(tB)-y(tE)}" fill="#fbf1de"/>`;
+  g += `<rect x="${L}" y="${T}" width="${iw}" height="${y(tE)-T}" fill="#fbe9e7"/>`;
   for(let t=0;t<=4;t++){ const v=maxV*(1-t/4), yy=T+ih/4*t;
-    g += `<line x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}" stroke="#fff" stroke-width="1.2" opacity=".7"/>`;
     g += `<text x="${L-8}" y="${yy+4}" text-anchor="end" font-size="10" fill="#6b6f6a">${v.toFixed(0)}%</text>`;
   }
-  g += `<line x1="${L}" x2="${W-R}" y1="${y(margen)}" y2="${y(margen)}" stroke="#b3261e" stroke-width="2" stroke-dasharray="7 5"/>`;
-  g += `<text x="${W-R-4}" y="${y(margen)-7}" text-anchor="end" font-size="10.5" font-weight="700" fill="#b3261e">Punto de equilibrio · ${fmtP(margen,0)} del ticket</text>`;
-  g += `<text x="${L+8}" y="${T+ih-8}" font-size="10" font-weight="700" fill="#1a7a3c">Zona de ganancia</text>`;
+  g += `<line x1="${L}" x2="${W-R}" y1="${y(tB)}" y2="${y(tB)}" stroke="#1a7a3c" stroke-width="2" stroke-dasharray="7 5"/>`;
+  g += `<text x="${W-R-4}" y="${y(tB)+14}" text-anchor="end" font-size="10.5" font-weight="700" fill="#1a7a3c">Tope base · ${fmtP(tB,0)}</text>`;
+  g += `<line x1="${L}" x2="${W-R}" y1="${y(tE)}" y2="${y(tE)}" stroke="#a9711f" stroke-width="2" stroke-dasharray="7 5"/>`;
+  g += `<text x="${W-R-4}" y="${y(tE)-7}" text-anchor="end" font-size="10.5" font-weight="700" fill="#a9711f">Tope reservas extra · ${fmtP(tE,0)}</text>`;
   const mk = (key,color,fill,dash,below) => {
     const p = series.map((s,i)=>s[key]!=null?{i,v:s[key]}:null).filter(Boolean);
     if(!p.length) return "";
@@ -695,70 +695,78 @@ function pctChart(series, margen){
       h += `<text x="${x(q.i)}" y="${y(q.v)+(below?26:-14)}" text-anchor="middle" font-size="12" font-weight="800" fill="${color}">${fmtP(q.v)}</text>`; });
     return h;
   };
-  g += mk("cpaPct","#0d543f","#fff",false,true) + mk("margPct","#a9711f","#c9a24b",true);
+  g += mk("cpaPct","#0d543f","#fff",false,true) + mk("margPct","#a9711f","#c9a24b",true,false);
   series.forEach((s,i)=>{ g += `<text x="${x(i)}" y="${H-14}" text-anchor="middle" font-size="12" font-weight="700" fill="#252525">${esc(s.mes)}</text>`; });
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="CPA como porcentaje del ticket promedio">${g}</svg>`;
 }
 
-function getMargen(){
-  try{ const v = parseFloat(localStorage.getItem(MARGIN_KEY)); if(v>0&&v<=100) return v; }catch(e){}
-  return MARGEN_SHEET || 40;
+const TOPES_KEY = "eleton_dash_topes";
+let TOPES_SHEET = {base:null, extra:null};
+function getTopes(){
+  let b=null,e=null;
+  try{ const o=JSON.parse(localStorage.getItem(TOPES_KEY)||"null"); if(o){ b=o.base; e=o.extra; } }catch(_){}
+  const ok = v => typeof v==="number" && v>0 && v<=100;
+  return { base: ok(b)?b:(TOPES_SHEET.base||5), extra: ok(e)?e:(TOPES_SHEET.extra||12) };
+}
+
+/* presupuesto permitido: tope base hasta las reservas del año pasado, tope extra por encima */
+function calcPermitido(s, tB, tE){
+  const base = s.prevN ? Math.min(s.n, s.prevN) : s.n;
+  const extra = s.n - base;
+  const permitido = s.ticket*(tB/100*base + tE/100*extra);
+  return { base, extra, permitido, uso: s.inv/permitido, dif: s.inv-permitido };
 }
 
 function renderMacro(reservas, objetivos){
   const el = document.getElementById("macro");
   const S = macroSeries(reservas, objetivos);
   if(!S.length){ el.innerHTML = ""; return; }
-  const margen = getMargen();
+  const {base:tB, extra:tE} = getTopes();
+  S.forEach(s=>Object.assign(s, calcPermitido(s,tB,tE)));
   const cur = S[S.length-1], prev = S[S.length-2];
-  const beCpa = cur.ticket*margen/100;
 
-  // veredicto: ¿cuánto del "costo de equilibrio" consume cada reserva extra?
-  let cls="na", title="Cargá un mes más para ver la tendencia", sub=`Con un solo mes de datos podemos ver el CPA (${fmtMoney(cur.cpa)}) pero no el costo de cada reserva adicional.`, use=cur.cpa/beCpa;
-  if(prev){
-    if(cur.cpaMarg!=null){
-      use = cur.cpaMarg/beCpa;
-      const veces = cur.cpaMarg/prev.cpa;
-      if(use<0.5){ cls="go"; title="🟢 Podés seguir escalando el presupuesto"; }
-      else if(use<1){ cls="warn"; title="🟡 Escalá con cuidado: te acercás al límite"; }
-      else { cls="stop"; title="🔴 Frená: cada reserva extra ya cuesta más de lo que deja"; }
-      sub = `Sumaste ${fmtMoney(cur.dInv)} de inversión (${cur.gInv>=0?"+":""}${fmtP(cur.gInv*100,0)}) y eso trajo ${cur.dN>=0?"+":""}${cur.dN} reservas (${fmtP(cur.gN*100,0)}). `+
-            `Cada reserva adicional te costó <b style="color:#fff">${fmtMoney(cur.cpaMarg)}</b> (${veces.toFixed(1).replace(".",",")}× el CPA del mes anterior), `+
-            `que es el <b style="color:#fff">${fmtP(use*100,0)}</b> de lo que podés pagar por reserva sin perder (${fmtMoney(beCpa)} con ${fmtP(margen,0)} de margen).`;
-    } else if(cur.dN<=0){
-      cls="stop"; title="🔴 Más inversión, sin más reservas";
-      sub=`Invertiste ${fmtMoney(cur.dInv)} más pero las reservas ${cur.dN===0?"quedaron igual":"bajaron ("+cur.dN+")"}. Revisá qué se está pautando antes de escalar.`; use=1;
-    }
-  }
-  const gaugePct = Math.min(use,1.1)/1.1*100, markPct = 1/1.1*100;
+  let cls, title;
+  if(cur.uso<=0.9){ cls="go"; title="🟢 Estás dentro del tope: podés seguir escalando"; }
+  else if(cur.uso<=1.05){ cls="warn"; title="🟡 Estás en el límite de tu tope"; }
+  else { cls="stop"; title="🔴 Te pasaste de tu tope de inversión"; }
+  const room = cur.permitido-cur.inv;
+  const extraCosto = cur.ticket*tE/100;
+  let sub = `Invertiste <b style="color:#fff">${fmtMoney(cur.inv)}</b> y tu presupuesto permitido para ${cur.n} reservas es <b style="color:#fff">${fmtMoney(cur.permitido)}</b> `+
+    `(${cur.base} a ${fmtP(tB,0)} del ticket${cur.extra>0?` + ${cur.extra} extra a ${fmtP(tE,0)}`:""}). `+
+    (room>=0 ? `Te quedan ${fmtMoney(room)} de margen: alcanzaría para unas ${Math.floor(room/extraCosto)} reservas más al tope extra.`
+             : `Estás ${fmtMoney(-room)} (${fmtP(cur.uso*100-100,0)}) por encima.`);
+  if(!cur.prevN) sub += ` <i>Sin reservas del año pasado cargadas para ${esc(cur.mes)}: todas se miden con el tope base.</i>`;
+  if(prev && cur.cpaMarg!=null) sub += ` Cada reserva que sumaste vs. ${esc(prev.mes)} te costó ${fmtMoney(cur.cpaMarg)} (${fmtP(cur.margPct)} del ticket).`;
+  const gaugePct = Math.min(cur.uso,1.3)/1.3*100, markPct = 1/1.3*100;
 
-  const rows = [
-    ["gInv","Inversión", cur.gInv], ["gN","Reservas", cur.gN], ["gTk","Ticket promedio", cur.gTk], ["gIng","Facturación de reservas", cur.gIng],
-  ];
-  const growthMax = Math.max(...rows.map(r=>Math.abs(r[2]||0)), .01);
+  const rows = prev ? [["Inversión", cur.gInv],["Reservas", cur.gN],["Ticket promedio", cur.gTk],["Facturación de reservas", cur.gIng]] : [];
+  const growthMax = Math.max(...rows.map(r=>Math.abs(r[1]||0)), .01);
 
   el.innerHTML = `
     <section>
       <div class="macro-head">
         <h2 class="sec-h">Visión macro · ¿Hasta dónde escalar?</h2>
-        <label class="marginbox">Margen bruto estimado <input id="margenInp" type="number" min="1" max="100" step="1" value="${margen}">%</label>
+        <div style="display:flex;gap:1rem;flex-wrap:wrap">
+          <label class="marginbox">Tope base <input id="topeB" type="number" min="0.5" max="100" step="0.5" value="${tB}">%</label>
+          <label class="marginbox">Tope reservas extra <input id="topeE" type="number" min="0.5" max="100" step="0.5" value="${tE}">%</label>
+        </div>
       </div>
 
       <div class="verdict ${cls}">
         <div class="vt">${title}</div>
         <div class="vs">${sub}</div>
-        ${prev && cur.cpaMarg!=null ? `<div class="gauge">
+        <div class="gauge">
           <div class="gauge-track"><div class="gauge-fill" style="width:${gaugePct.toFixed(1)}%"></div><div class="gauge-mark" style="left:${markPct.toFixed(1)}%"></div></div>
-          <div class="gauge-lbls"><span>$0 por reserva extra</span><span>Límite: ${fmtMoney(beCpa)}</span></div>
-        </div>`:""}
+          <div class="gauge-lbls"><span>${fmtP(cur.uso*100,0)} del presupuesto permitido</span><span>Tope: ${fmtMoney(cur.permitido)}</span></div>
+        </div>
       </div>
 
       <div class="kpi-grid" style="margin-bottom:1rem">
         <div class="kpi"><div class="lbl">CPA ${esc(cur.mes)}</div><div class="val" style="font-size:1.6rem">${fmtMoney(cur.cpa)}</div>${prev?`<div class="sub">${cur.gCpa>=0?"▲":"▼"} ${fmtP(Math.abs(cur.gCpa)*100)} vs. ${esc(prev.mes)}</div>`:""}</div>
-        <div class="kpi"><div class="lbl">CPA / ticket</div><div class="val">${fmtP(cur.cpaPct)}</div><div class="sub">de cada venta se va en pauta</div></div>
+        <div class="kpi"><div class="lbl">CPA / ticket</div><div class="val">${fmtP(cur.cpaPct)}</div><div class="sub">tope base: ${fmtP(tB,0)}</div></div>
         <div class="kpi"><div class="lbl">ROAS</div><div class="val">${cur.roas.toFixed(1).replace(".",",")}x</div><div class="sub">$ vendidos por cada $1 invertido</div></div>
-        <div class="kpi"><div class="lbl">CPA marginal</div><div class="val" style="font-size:1.6rem">${cur.cpaMarg!=null?fmtMoney(cur.cpaMarg):"—"}</div><div class="sub">costo de cada reserva extra</div></div>
-        <div class="kpi"><div class="lbl">CPA de equilibrio</div><div class="val" style="font-size:1.6rem">${fmtMoney(beCpa)}</div><div class="sub">ticket × ${fmtP(margen,0)} de margen</div></div>
+        <div class="kpi"><div class="lbl">CPA marginal</div><div class="val" style="font-size:1.6rem">${cur.cpaMarg!=null?fmtMoney(cur.cpaMarg):"—"}</div><div class="sub">${cur.margPct!=null?fmtP(cur.margPct)+" del ticket · ":""}costo de cada reserva extra</div></div>
+        <div class="kpi"><div class="lbl">Presupuesto permitido</div><div class="val" style="font-size:1.6rem">${fmtMoney(cur.permitido)}</div><div class="sub">${cur.dif<=0?"Te sobran "+fmtMoney(-cur.dif):"Te pasaste por "+fmtMoney(cur.dif)}</div></div>
       </div>
 
       <div class="macro-grid">
@@ -770,38 +778,39 @@ function renderMacro(reservas, objetivos){
         </div>
         <div class="chart-card">
           <h3>¿Cuánto del ticket se va en pauta?</h3>
-          <p class="cs">Mientras el punto esté en la zona verde, cada venta deja ganancia.</p>
-          <div class="svgwrap">${pctChart(S, margen)}</div>
-          <div class="legend"><span><i class="ln" style="background:#0d543f"></i>CPA promedio</span><span><i class="ln" style="background:#c9a24b"></i>CPA marginal (reserva extra)</span></div>
+          <p class="cs">Verde: dentro del tope base. Amarillo: entre tus dos topes. Rojo: por encima del tope extra.</p>
+          <div class="svgwrap">${pctChart(S, tB, tE)}</div>
+          <div class="legend"><span><i class="ln" style="background:#0d543f"></i>CPA promedio del mes</span><span><i class="ln" style="background:#c9a24b"></i>CPA marginal (reservas sumadas)</span></div>
         </div>
       </div>
 
-      ${prev ? `<div class="macro-grid">
-        <div class="chart-card">
+      <div class="macro-grid">
+        ${prev ? `<div class="chart-card">
           <h3>¿Qué compró el aumento? ${esc(prev.mes)} → ${esc(cur.mes)}</h3>
           <p class="cs">Si la facturación crece más que la inversión, el presupuesto extra rindió.</p>
-          ${rows.map(([k,lbl,v])=>{ const w=Math.abs(v)/growthMax*100; const col = k==="gInv"?"#a9a68f":"var(--teal)"; return `
+          ${rows.map(([lbl,v],i)=>{ const w=Math.abs(v)/growthMax*100; const col = i===0?"#a9a68f":"var(--teal)"; return `
             <div class="growth-row"><div class="gt"><span>${lbl}</span><span>${v>=0?"+":"−"}${fmtP(Math.abs(v)*100)}</span></div>
             <div class="bar-track" style="height:12px"><div class="bar-fill" style="width:${w.toFixed(1)}%;background:${v<0?"#b3261e":col}"></div></div></div>`;}).join("")}
-        </div>
+        </div>`:""}
         <div class="chart-card">
           <h3>Detalle mensual</h3>
-          <p class="cs">Inversión = Meta + Google. Facturación = reservas × ticket promedio.</p>
-          <div class="tblwrap"><table class="mtable"><thead><tr><th>Mes</th><th>Inversión</th><th>Reservas</th><th>Ticket</th><th>CPA</th><th>CPA/ticket</th><th>ROAS</th></tr></thead><tbody>
-          ${S.map(s=>`<tr><td>${esc(s.mes)}</td><td>${fmtMoney(s.inv)}</td><td>${s.n}</td><td>${fmtMoney(s.ticket)}</td><td>${fmtMoney(s.cpa)}</td><td>${fmtP(s.cpaPct)}</td><td>${s.roas.toFixed(1).replace(".",",")}x</td></tr>`).join("")}
+          <p class="cs">Inversión = Meta + Google. Permitido = reservas hasta el objetivo × tope base + reservas por encima × tope extra.</p>
+          <div class="tblwrap"><table class="mtable"><thead><tr><th>Mes</th><th>Inversión</th><th>Reservas</th><th>Obj.</th><th>Ticket</th><th>CPA</th><th>CPA/ticket</th><th>Permitido</th><th>Uso</th></tr></thead><tbody>
+          ${S.map(s=>`<tr><td>${esc(s.mes)}</td><td>${fmtMoney(s.inv)}</td><td>${s.n}</td><td>${s.prevN!=null?s.prevN:"—"}</td><td>${fmtMoney(s.ticket)}</td><td>${fmtMoney(s.cpa)}</td><td>${fmtP(s.cpaPct)}</td><td>${fmtMoney(s.permitido)}</td><td style="font-weight:700;color:${s.uso<=0.9?"#1a7a3c":s.uso<=1.05?"#a9711f":"#b3261e"}">${fmtP(s.uso*100,0)}</td></tr>`).join("")}
           </tbody></table></div>
         </div>
-      </div>`:""}
-      <p class="note">El ticket es facturación, no ganancia: el punto de equilibrio depende del margen bruto. Ajustá el % de arriba (o cargalo en la hoja Objetivos: Mes = <b>margen</b>, Valor = 40) para recalcular. Un CPA marginal que sube mes a mes es la señal de rendimientos decrecientes.</p>
+      </div>
+      <p class="note">Probá distintos topes arriba (se guardan en tu navegador). Para dejarlos fijos para todos, cargá en la hoja Objetivos dos filas: Mes = <b>tope base</b> y Mes = <b>tope extra</b>, con el número en la columna Valor (ej. 5 y 12). "Obj." son las reservas del mismo mes del año pasado. Un CPA marginal que sube mes a mes es la señal de rendimientos decrecientes.</p>
     </section>
     <hr class="macro-sep">
     <h2 class="sec-h" style="margin-bottom:.2rem">Detalle por mes de venta</h2>
     <p class="note" style="margin:0 0 1rem">Elegí el mes arriba para ver el detalle de reservas.</p>`;
-  const inp = document.getElementById("margenInp");
-  inp.addEventListener("change", ()=>{
-    const v = parseFloat(inp.value);
-    if(v>0 && v<=100){ try{ localStorage.setItem(MARGIN_KEY, String(v)); }catch(e){} renderMacro(reservas, objetivos); }
-  });
+  const save = () => {
+    const b=parseFloat(document.getElementById("topeB").value), e=parseFloat(document.getElementById("topeE").value);
+    if(b>0&&b<=100&&e>0&&e<=100){ try{ localStorage.setItem(TOPES_KEY, JSON.stringify({base:b,extra:e})); }catch(_){} renderMacro(reservas, objetivos); }
+  };
+  document.getElementById("topeB").addEventListener("change", save);
+  document.getElementById("topeE").addEventListener("change", save);
 }
 
 /* ══════ Password gate ══════ */
@@ -844,9 +853,11 @@ document.getElementById("lockBtn").addEventListener("click", ()=>{
   const objetivosRaw = objetivosRes.rows;
   const pwRow = objetivosRaw.find(o=>_na(o.mes)==="password");
   if(pwRow && pwRow.valor) CONFIG_PASSWORD = pwRow.valor.trim();
-  const mgRow = objetivosRaw.find(o=>_na(o.mes)==="margen");
-  if(mgRow && parseNum(mgRow.valor)>0) MARGEN_SHEET = parseNum(mgRow.valor);
-  const objetivos = objetivosRaw.filter(o=>!["password","margen"].includes(_na(o.mes)));
+  const tbRow = objetivosRaw.find(o=>_na(o.mes)==="tope base");
+  const teRow = objetivosRaw.find(o=>_na(o.mes)==="tope extra");
+  if(tbRow && parseNum(tbRow.valor)>0) TOPES_SHEET.base = parseNum(tbRow.valor);
+  if(teRow && parseNum(teRow.valor)>0) TOPES_SHEET.extra = parseNum(teRow.valor);
+  const objetivos = objetivosRaw.filter(o=>!["password","margen","tope base","tope extra"].includes(_na(o.mes)));
 
   const reservas = reservasRes.rows.map(buildReserva).filter(Boolean);
   renderMacro(reservas, objetivos);
