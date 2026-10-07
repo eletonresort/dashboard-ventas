@@ -723,7 +723,12 @@ function renderMacro(reservas, objetivos){
   if(!S.length){ el.innerHTML = ""; return; }
   const {base:tB, extra:tE} = getTopes();
   S.forEach(s=>Object.assign(s, calcPermitido(s,tB,tE)));
-  const cur = S[S.length-1], prev = S[S.length-2];
+  const selKey = (document.getElementById("monthSel")||{}).value;
+  let idx = S.findIndex(x=>x.key===selKey);
+  const fallback = idx<0;
+  if(fallback) idx = S.length-1;
+  const cur = S[idx], prev = S[idx-1];
+  const selLbl = selKey ? (()=>{ const [yy,mm]=selKey.split("-"); return MESES_CAP[+mm-1]; })() : "";
 
   let cls, title;
   if(cur.uso<=0.9){ cls="go"; title="🟢 Estás dentro del tope: podés seguir escalando"; }
@@ -754,6 +759,7 @@ function renderMacro(reservas, objetivos){
 
       <div class="verdict ${cls}">
         <div class="vt">${title}</div>
+        ${fallback && selLbl ? `<div class="vs" style="margin:.2rem 0 .4rem"><i>No hay inversión cargada para ${esc(selLbl)} en la hoja Objetivos: se muestra ${esc(cur.mes)}, el último mes con datos.</i></div>`:""}
         <div class="vs">${sub}</div>
         <div class="gauge">
           <div class="gauge-track"><div class="gauge-fill" style="width:${gaugePct.toFixed(1)}%"></div><div class="gauge-mark" style="left:${markPct.toFixed(1)}%"></div></div>
@@ -860,8 +866,9 @@ document.getElementById("lockBtn").addEventListener("click", ()=>{
   const objetivos = objetivosRaw.filter(o=>!["password","margen","tope base","tope extra"].includes(_na(o.mes)));
 
   const reservas = reservasRes.rows.map(buildReserva).filter(Boolean);
-  renderMacro(reservas, objetivos);
   render(reservas, objetivos);
+  renderMacro(reservas, objetivos);
+  document.getElementById("monthSel").addEventListener("change", ()=>renderMacro(reservas, objetivos));
 
   if(checkSession()){ openApp(); } else { document.getElementById("pwInput").focus(); }
 })();
