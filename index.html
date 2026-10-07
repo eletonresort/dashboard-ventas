@@ -672,109 +672,101 @@ function comboChart(series, o){
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.aria)}">${g}</svg>`;
 }
 
-/* CPA como % del ticket, contra los dos topes */
-function pctChart(series, tB, tE){
+/* CPA como % del ticket, contra el tope (verde < tope · amarillo ≈ tope ±0,5 pts · rojo > tope) */
+const BAND = 0.5;
+function estado(cpaPct, tope){
+  if(cpaPct < tope-BAND) return {cls:"go", col:"#1a7a3c", ico:"🟢", txt:"Por debajo del tope"};
+  if(cpaPct <= tope+BAND) return {cls:"warn", col:"#a9711f", ico:"🟡", txt:"En el tope"};
+  return {cls:"stop", col:"#b3261e", ico:"🔴", txt:"Por encima del tope"};
+}
+function pctChart(series, tope, selKey){
   const W=640,H=300,L=52,R=20,T=26,B=40, iw=W-L-R, ih=H-T-B, n=series.length;
-  const maxV = Math.max(tE*1.25, ...series.map(s=>s.cpaPct), ...series.map(s=>s.margPct||0))*1.1;
+  const maxV = Math.max(tope*2, ...series.map(s=>s.cpaPct))*1.12;
   const slot = iw/n, x = i => L + slot*i + slot/2, y = v => T + ih - v/maxV*ih;
-  let g = `<rect x="${L}" y="${y(tB)}" width="${iw}" height="${T+ih-y(tB)}" fill="#e5f4ea"/>`;
-  g += `<rect x="${L}" y="${y(tE)}" width="${iw}" height="${y(tB)-y(tE)}" fill="#fbf1de"/>`;
-  g += `<rect x="${L}" y="${T}" width="${iw}" height="${y(tE)-T}" fill="#fbe9e7"/>`;
+  const lo = Math.max(tope-BAND,0), hi = tope+BAND;
+  let g = `<rect x="${L}" y="${y(lo)}" width="${iw}" height="${T+ih-y(lo)}" fill="#e5f4ea"/>`;
+  g += `<rect x="${L}" y="${y(hi)}" width="${iw}" height="${y(lo)-y(hi)}" fill="#fbf1de"/>`;
+  g += `<rect x="${L}" y="${T}" width="${iw}" height="${y(hi)-T}" fill="#fbe9e7"/>`;
   for(let t=0;t<=4;t++){ const v=maxV*(1-t/4), yy=T+ih/4*t;
-    g += `<text x="${L-8}" y="${yy+4}" text-anchor="end" font-size="10" fill="#6b6f6a">${v.toFixed(0)}%</text>`;
-  }
-  g += `<line x1="${L}" x2="${W-R}" y1="${y(tB)}" y2="${y(tB)}" stroke="#1a7a3c" stroke-width="2" stroke-dasharray="7 5"/>`;
-  g += `<text x="${W-R-4}" y="${y(tB)+14}" text-anchor="end" font-size="10.5" font-weight="700" fill="#1a7a3c">Tope base · ${fmtP(tB,0)}</text>`;
-  g += `<line x1="${L}" x2="${W-R}" y1="${y(tE)}" y2="${y(tE)}" stroke="#a9711f" stroke-width="2" stroke-dasharray="7 5"/>`;
-  g += `<text x="${W-R-4}" y="${y(tE)-7}" text-anchor="end" font-size="10.5" font-weight="700" fill="#a9711f">Tope reservas extra · ${fmtP(tE,0)}</text>`;
-  const mk = (key,color,fill,dash,below) => {
-    const p = series.map((s,i)=>s[key]!=null?{i,v:s[key]}:null).filter(Boolean);
-    if(!p.length) return "";
-    let h = p.length>1 ? `<polyline points="${p.map(q=>x(q.i)+","+y(q.v)).join(" ")}" fill="none" stroke="${color}" stroke-width="3.5" ${dash?'stroke-dasharray="2 7"':''} stroke-linecap="round" stroke-linejoin="round"/>` : "";
-    p.forEach(q=>{ h += `<circle cx="${x(q.i)}" cy="${y(q.v)}" r="6.5" fill="${fill}" stroke="${color}" stroke-width="3.5"/>`;
-      h += `<text x="${x(q.i)}" y="${y(q.v)+(below?26:-14)}" text-anchor="middle" font-size="12" font-weight="800" fill="${color}">${fmtP(q.v)}</text>`; });
-    return h;
-  };
-  g += mk("cpaPct","#0d543f","#fff",false,true) + mk("margPct","#a9711f","#c9a24b",true,false);
-  series.forEach((s,i)=>{ g += `<text x="${x(i)}" y="${H-14}" text-anchor="middle" font-size="12" font-weight="700" fill="#252525">${esc(s.mes)}</text>`; });
+    g += `<text x="${L-8}" y="${yy+4}" text-anchor="end" font-size="10" fill="#6b6f6a">${v.toFixed(0)}%</text>`; }
+  g += `<line x1="${L}" x2="${W-R}" y1="${y(tope)}" y2="${y(tope)}" stroke="#252525" stroke-width="1.8" stroke-dasharray="7 5"/>`;
+  g += `<text x="${W-R-4}" y="${y(tope)-7}" text-anchor="end" font-size="10.5" font-weight="700" fill="#252525">Tu tope · ${fmtP(tope,1).replace(",0%","%")}</text>`;
+  if(series.length>1) g += `<polyline points="${series.map((s,i)=>x(i)+","+y(s.cpaPct)).join(" ")}" fill="none" stroke="#6b6f6a" stroke-width="2.5" stroke-linejoin="round"/>`;
+  series.forEach((s,i)=>{
+    const e = estado(s.cpaPct, tope), sel = s.key===selKey;
+    g += `<circle cx="${x(i)}" cy="${y(s.cpaPct)}" r="${sel?9:7}" fill="${e.col}" stroke="#fff" stroke-width="3"/>`;
+    if(sel) g += `<circle cx="${x(i)}" cy="${y(s.cpaPct)}" r="13" fill="none" stroke="${e.col}" stroke-width="2"/>`;
+    g += `<text x="${x(i)}" y="${y(s.cpaPct)-18}" text-anchor="middle" font-size="12.5" font-weight="800" fill="${e.col}">${fmtP(s.cpaPct)}</text>`;
+    g += `<text x="${x(i)}" y="${H-14}" text-anchor="middle" font-size="12" font-weight="${sel?800:600}" fill="#252525">${esc(s.mes)}</text>`;
+  });
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="CPA como porcentaje del ticket promedio">${g}</svg>`;
 }
 
-const TOPES_KEY = "eleton_dash_topes";
-let TOPES_SHEET = {base:null, extra:null};
-function getTopes(){
-  let b=null,e=null;
-  try{ const o=JSON.parse(localStorage.getItem(TOPES_KEY)||"null"); if(o){ b=o.base; e=o.extra; } }catch(_){}
-  const ok = v => typeof v==="number" && v>0 && v<=100;
-  return { base: ok(b)?b:(TOPES_SHEET.base||5), extra: ok(e)?e:(TOPES_SHEET.extra||12) };
-}
-
-/* presupuesto permitido: tope base hasta las reservas del año pasado, tope extra por encima */
-function calcPermitido(s, tB, tE){
-  const base = s.prevN ? Math.min(s.n, s.prevN) : s.n;
-  const extra = s.n - base;
-  const permitido = s.ticket*(tB/100*base + tE/100*extra);
-  return { base, extra, permitido, uso: s.inv/permitido, dif: s.inv-permitido };
+const TOPE_KEY = "eleton_dash_tope";
+let TOPE_SHEET = null;
+function getTope(){
+  try{ const v=parseFloat(localStorage.getItem(TOPE_KEY)); if(v>0&&v<=100) return v; }catch(_){}
+  return TOPE_SHEET || 5;
 }
 
 function renderMacro(reservas, objetivos){
   const el = document.getElementById("macro");
   const S = macroSeries(reservas, objetivos);
-  if(!S.length){ el.innerHTML = ""; return; }
-  const {base:tB, extra:tE} = getTopes();
-  S.forEach(s=>Object.assign(s, calcPermitido(s,tB,tE)));
+  const tope = getTope();
+  if(!S.length){
+    el.innerHTML = `<section><h2 class="sec-h">Visión macro · ¿Hasta dónde escalar?</h2><div class="verdict na"><div class="vt">Falta cargar la inversión</div><div class="vs">Completá en la hoja Objetivos las columnas "Inversión Meta actual" y/o "Inversión Google actual" del mes para ver el CPA.</div></div></section>`;
+    return;
+  }
+  S.forEach(s=>{ s.maxInv = s.ticket*tope/100*s.n; s.est = estado(s.cpaPct, tope); });
   const selKey = (document.getElementById("monthSel")||{}).value;
-  let idx = S.findIndex(x=>x.key===selKey);
-  const fallback = idx<0;
-  if(fallback) idx = S.length-1;
-  const cur = S[idx], prev = S[idx-1];
-  const selLbl = selKey ? (()=>{ const [yy,mm]=selKey.split("-"); return MESES_CAP[+mm-1]; })() : "";
+  const selLbl = selKey ? MESES_CAP[+selKey.split("-")[1]-1] : "";
+  const idx = S.findIndex(x=>x.key===selKey);
+  const cur = idx>=0 ? S[idx] : null, prev = idx>0 ? S[idx-1] : null;
 
-  let cls, title;
-  if(cur.uso<=0.9){ cls="go"; title="🟢 Estás dentro del tope: podés seguir escalando"; }
-  else if(cur.uso<=1.05){ cls="warn"; title="🟡 Estás en el límite de tu tope"; }
-  else { cls="stop"; title="🔴 Te pasaste de tu tope de inversión"; }
-  const room = cur.permitido-cur.inv;
-  const extraCosto = cur.ticket*tE/100;
-  let sub = `Invertiste <b style="color:#fff">${fmtMoney(cur.inv)}</b> y tu presupuesto permitido para ${cur.n} reservas es <b style="color:#fff">${fmtMoney(cur.permitido)}</b> `+
-    `(${cur.base} a ${fmtP(tB,0)} del ticket${cur.extra>0?` + ${cur.extra} extra a ${fmtP(tE,0)}`:""}). `+
-    (room>=0 ? `Te quedan ${fmtMoney(room)} de margen: alcanzaría para unas ${Math.floor(room/extraCosto)} reservas más al tope extra.`
-             : `Estás ${fmtMoney(-room)} (${fmtP(cur.uso*100-100,0)}) por encima.`);
-  if(!cur.prevN) sub += ` <i>Sin reservas del año pasado cargadas para ${esc(cur.mes)}: todas se miden con el tope base.</i>`;
-  if(prev && cur.cpaMarg!=null) sub += ` Cada reserva que sumaste vs. ${esc(prev.mes)} te costó ${fmtMoney(cur.cpaMarg)} (${fmtP(cur.margPct)} del ticket).`;
-  const gaugePct = Math.min(cur.uso,1.3)/1.3*100, markPct = 1/1.3*100;
+  let verdict;
+  if(!cur){
+    verdict = `<div class="verdict na"><div class="vt">Falta cargar la inversión de ${esc(selLbl)}</div>
+      <div class="vs">Ese mes no tiene "Inversión Meta actual" ni "Inversión Google actual" en la hoja Objetivos. Meses con datos: ${S.map(s=>esc(s.mes)).join(", ")}.</div></div>`;
+  } else {
+    const e = cur.est, room = cur.maxInv-cur.inv;
+    let title, sub;
+    if(e.cls==="go"){
+      title = "🟢 Estás por debajo de tu tope: podés seguir escalando";
+      sub = `Tu CPA es el <b style="color:#fff">${fmtP(cur.cpaPct)}</b> del ticket y tu tope es ${fmtP(tope,1).replace(",0%","%")}. Con las ${cur.n} reservas de ${esc(cur.mes)} podías invertir hasta <b style="color:#fff">${fmtMoney(cur.maxInv)}</b>: te quedaban <b style="color:#fff">${fmtMoney(room)}</b> de margen.`;
+    } else if(e.cls==="warn"){
+      title = "🟡 Estás justo en tu tope";
+      sub = `Tu CPA es el <b style="color:#fff">${fmtP(cur.cpaPct)}</b> del ticket, prácticamente tu tope de ${fmtP(tope,1).replace(",0%","%")}. Más inversión solo conviene si trae reservas nuevas a un costo menor o igual al promedio.`;
+    } else {
+      const need = Math.ceil(cur.inv/(cur.ticket*tope/100)) - cur.n;
+      title = "🔴 Estás por encima de tu tope";
+      sub = `Tu CPA es el <b style="color:#fff">${fmtP(cur.cpaPct)}</b> del ticket y tu tope es ${fmtP(tope,1).replace(",0%","%")}. Te pasaste por <b style="color:#fff">${fmtMoney(-room)}</b>: para volver al tope necesitabas <b style="color:#fff">${need} reservas más</b> con la misma inversión, o invertir ${fmtMoney(cur.maxInv)}.`;
+    }
+    if(prev && cur.cpaMarg!=null) sub += ` Las ${cur.dN} reservas que sumaste vs. ${esc(prev.mes)} te costaron ${fmtMoney(cur.cpaMarg)} cada una (${fmtP(cur.margPct)} del ticket).`;
+    const ratio = cur.cpaPct/tope, gaugePct = Math.min(ratio,2)/2*100;
+    verdict = `<div class="verdict ${e.cls}"><div class="vt">${title}</div><div class="vs">${sub}</div>
+      <div class="gauge"><div class="gauge-track"><div class="gauge-fill" style="width:${gaugePct.toFixed(1)}%"></div><div class="gauge-mark" style="left:50%"></div></div>
+      <div class="gauge-lbls"><span>0%</span><span>Tope ${fmtP(tope,1).replace(",0%","%")}</span><span>${fmtP(tope*2,0)}</span></div></div></div>`;
+  }
 
-  const rows = prev ? [["Inversión", cur.gInv],["Reservas", cur.gN],["Ticket promedio", cur.gTk],["Facturación de reservas", cur.gIng]] : [];
+  const kpis = cur ? `<div class="kpi-grid" style="margin-bottom:1rem">
+      <div class="kpi"><div class="lbl">CPA ${esc(cur.mes)}</div><div class="val" style="font-size:1.6rem">${fmtMoney(cur.cpa)}</div>${prev?`<div class="sub">${cur.gCpa>=0?"▲":"▼"} ${fmtP(Math.abs(cur.gCpa)*100)} vs. ${esc(prev.mes)}</div>`:""}</div>
+      <div class="kpi"><div class="lbl">CPA / ticket</div><div class="val" style="color:${cur.est.col}">${fmtP(cur.cpaPct)}</div><div class="sub">tu tope: ${fmtP(tope,1).replace(",0%","%")}</div></div>
+      <div class="kpi"><div class="lbl">Inversión máx. al tope</div><div class="val" style="font-size:1.6rem">${fmtMoney(cur.maxInv)}</div><div class="sub">invertiste ${fmtMoney(cur.inv)}</div></div>
+      <div class="kpi"><div class="lbl">ROAS</div><div class="val">${cur.roas.toFixed(1).replace(".",",")}x</div><div class="sub">$ vendidos por cada $1 invertido</div></div>
+      <div class="kpi"><div class="lbl">CPA marginal</div><div class="val" style="font-size:1.6rem">${cur.cpaMarg!=null?fmtMoney(cur.cpaMarg):"—"}</div><div class="sub">${cur.margPct!=null?fmtP(cur.margPct)+" del ticket · ":""}costo de cada reserva sumada</div></div>
+    </div>` : "";
+
+  const rows = (cur&&prev) ? [["Inversión", cur.gInv],["Reservas", cur.gN],["Ticket promedio", cur.gTk],["Facturación de reservas", cur.gIng]] : [];
   const growthMax = Math.max(...rows.map(r=>Math.abs(r[1]||0)), .01);
 
   el.innerHTML = `
     <section>
       <div class="macro-head">
-        <h2 class="sec-h">Visión macro · ¿Hasta dónde escalar?</h2>
-        <div style="display:flex;gap:1rem;flex-wrap:wrap">
-          <label class="marginbox">Tope base <input id="topeB" type="number" min="0.5" max="100" step="0.5" value="${tB}">%</label>
-          <label class="marginbox">Tope reservas extra <input id="topeE" type="number" min="0.5" max="100" step="0.5" value="${tE}">%</label>
-        </div>
+        <h2 class="sec-h">Visión macro · ¿Hasta dónde escalar?${cur?` <span style="font-weight:500;opacity:.7">· ${esc(cur.mes)}</span>`:""}</h2>
+        <label class="marginbox">Tope: CPA máx. sobre ticket <input id="topeInp" type="number" min="0.5" max="100" step="0.5" value="${tope}">%</label>
       </div>
-
-      <div class="verdict ${cls}">
-        <div class="vt">${title}</div>
-        ${fallback && selLbl ? `<div class="vs" style="margin:.2rem 0 .4rem"><i>No hay inversión cargada para ${esc(selLbl)} en la hoja Objetivos: se muestra ${esc(cur.mes)}, el último mes con datos.</i></div>`:""}
-        <div class="vs">${sub}</div>
-        <div class="gauge">
-          <div class="gauge-track"><div class="gauge-fill" style="width:${gaugePct.toFixed(1)}%"></div><div class="gauge-mark" style="left:${markPct.toFixed(1)}%"></div></div>
-          <div class="gauge-lbls"><span>${fmtP(cur.uso*100,0)} del presupuesto permitido</span><span>Tope: ${fmtMoney(cur.permitido)}</span></div>
-        </div>
-      </div>
-
-      <div class="kpi-grid" style="margin-bottom:1rem">
-        <div class="kpi"><div class="lbl">CPA ${esc(cur.mes)}</div><div class="val" style="font-size:1.6rem">${fmtMoney(cur.cpa)}</div>${prev?`<div class="sub">${cur.gCpa>=0?"▲":"▼"} ${fmtP(Math.abs(cur.gCpa)*100)} vs. ${esc(prev.mes)}</div>`:""}</div>
-        <div class="kpi"><div class="lbl">CPA / ticket</div><div class="val">${fmtP(cur.cpaPct)}</div><div class="sub">tope base: ${fmtP(tB,0)}</div></div>
-        <div class="kpi"><div class="lbl">ROAS</div><div class="val">${cur.roas.toFixed(1).replace(".",",")}x</div><div class="sub">$ vendidos por cada $1 invertido</div></div>
-        <div class="kpi"><div class="lbl">CPA marginal</div><div class="val" style="font-size:1.6rem">${cur.cpaMarg!=null?fmtMoney(cur.cpaMarg):"—"}</div><div class="sub">${cur.margPct!=null?fmtP(cur.margPct)+" del ticket · ":""}costo de cada reserva extra</div></div>
-        <div class="kpi"><div class="lbl">Presupuesto permitido</div><div class="val" style="font-size:1.6rem">${fmtMoney(cur.permitido)}</div><div class="sub">${cur.dif<=0?"Te sobran "+fmtMoney(-cur.dif):"Te pasaste por "+fmtMoney(cur.dif)}</div></div>
-      </div>
-
+      ${verdict}
+      ${kpis}
       <div class="macro-grid">
         <div class="chart-card">
           <h3>Costo por adquisición vs. ticket promedio</h3>
@@ -783,15 +775,13 @@ function renderMacro(reservas, objetivos){
           <div class="legend"><span><i style="background:#138170"></i>Ticket promedio (eje izq.)</span><span><i class="ln" style="background:#a9711f"></i>CPA (eje der.)</span></div>
         </div>
         <div class="chart-card">
-          <h3>¿Cuánto del ticket se va en pauta?</h3>
-          <p class="cs">Verde: dentro del tope base. Amarillo: entre tus dos topes. Rojo: por encima del tope extra.</p>
-          <div class="svgwrap">${pctChart(S, tB, tE)}</div>
-          <div class="legend"><span><i class="ln" style="background:#0d543f"></i>CPA promedio del mes</span><span><i class="ln" style="background:#c9a24b"></i>CPA marginal (reservas sumadas)</span></div>
+          <h3>Evolutivo: CPA como % del ticket</h3>
+          <p class="cs">Verde: menos que tu tope · Amarillo: igual (±${String(BAND).replace(".",",")} pts) · Rojo: más. El mes elegido va resaltado.</p>
+          <div class="svgwrap">${pctChart(S, tope, selKey)}</div>
         </div>
       </div>
-
       <div class="macro-grid">
-        ${prev ? `<div class="chart-card">
+        ${rows.length ? `<div class="chart-card">
           <h3>¿Qué compró el aumento? ${esc(prev.mes)} → ${esc(cur.mes)}</h3>
           <p class="cs">Si la facturación crece más que la inversión, el presupuesto extra rindió.</p>
           ${rows.map(([lbl,v],i)=>{ const w=Math.abs(v)/growthMax*100; const col = i===0?"#a9a68f":"var(--teal)"; return `
@@ -800,23 +790,21 @@ function renderMacro(reservas, objetivos){
         </div>`:""}
         <div class="chart-card">
           <h3>Detalle mensual</h3>
-          <p class="cs">Inversión = Meta + Google. Permitido = reservas hasta el objetivo × tope base + reservas por encima × tope extra.</p>
-          <div class="tblwrap"><table class="mtable"><thead><tr><th>Mes</th><th>Inversión</th><th>Reservas</th><th>Obj.</th><th>Ticket</th><th>CPA</th><th>CPA/ticket</th><th>Permitido</th><th>Uso</th></tr></thead><tbody>
-          ${S.map(s=>`<tr><td>${esc(s.mes)}</td><td>${fmtMoney(s.inv)}</td><td>${s.n}</td><td>${s.prevN!=null?s.prevN:"—"}</td><td>${fmtMoney(s.ticket)}</td><td>${fmtMoney(s.cpa)}</td><td>${fmtP(s.cpaPct)}</td><td>${fmtMoney(s.permitido)}</td><td style="font-weight:700;color:${s.uso<=0.9?"#1a7a3c":s.uso<=1.05?"#a9711f":"#b3261e"}">${fmtP(s.uso*100,0)}</td></tr>`).join("")}
+          <p class="cs">Inversión = Meta + Google. Estado según tu tope.</p>
+          <div class="tblwrap"><table class="mtable"><thead><tr><th>Mes</th><th>Inversión</th><th>Reservas</th><th>Ticket</th><th>CPA</th><th>CPA/ticket</th><th>Estado</th><th>Máx. al tope</th></tr></thead><tbody>
+          ${S.map(s=>`<tr${s.key===selKey?' style="background:#f6f4ee"':""}><td>${esc(s.mes)}</td><td>${fmtMoney(s.inv)}</td><td>${s.n}</td><td>${fmtMoney(s.ticket)}</td><td>${fmtMoney(s.cpa)}</td><td style="font-weight:700;color:${s.est.col}">${fmtP(s.cpaPct)}</td><td>${s.est.ico}</td><td>${fmtMoney(s.maxInv)}</td></tr>`).join("")}
           </tbody></table></div>
         </div>
       </div>
-      <p class="note">Probá distintos topes arriba (se guardan en tu navegador). Para dejarlos fijos para todos, cargá en la hoja Objetivos dos filas: Mes = <b>tope base</b> y Mes = <b>tope extra</b>, con el número en la columna Valor (ej. 5 y 12). "Obj." son las reservas del mismo mes del año pasado. Un CPA marginal que sube mes a mes es la señal de rendimientos decrecientes.</p>
+      <p class="note">Cambiá el tope arriba para probar alternativas (se guarda en tu navegador). Para dejarlo fijo para todos, cargá en la hoja Objetivos una fila con Mes = <b>tope</b> y el número en la columna Valor (ej. 5). Los meses que aparecen son los que tienen inversión cargada en Objetivos y reservas en la hoja Reservas.</p>
     </section>
     <hr class="macro-sep">
     <h2 class="sec-h" style="margin-bottom:.2rem">Detalle por mes de venta</h2>
     <p class="note" style="margin:0 0 1rem">Elegí el mes arriba para ver el detalle de reservas.</p>`;
-  const save = () => {
-    const b=parseFloat(document.getElementById("topeB").value), e=parseFloat(document.getElementById("topeE").value);
-    if(b>0&&b<=100&&e>0&&e<=100){ try{ localStorage.setItem(TOPES_KEY, JSON.stringify({base:b,extra:e})); }catch(_){} renderMacro(reservas, objetivos); }
-  };
-  document.getElementById("topeB").addEventListener("change", save);
-  document.getElementById("topeE").addEventListener("change", save);
+  document.getElementById("topeInp").addEventListener("change", e=>{
+    const v=parseFloat(e.target.value);
+    if(v>0&&v<=100){ try{ localStorage.setItem(TOPE_KEY, String(v)); }catch(_){} renderMacro(reservas, objetivos); }
+  });
 }
 
 /* ══════ Password gate ══════ */
@@ -859,11 +847,9 @@ document.getElementById("lockBtn").addEventListener("click", ()=>{
   const objetivosRaw = objetivosRes.rows;
   const pwRow = objetivosRaw.find(o=>_na(o.mes)==="password");
   if(pwRow && pwRow.valor) CONFIG_PASSWORD = pwRow.valor.trim();
-  const tbRow = objetivosRaw.find(o=>_na(o.mes)==="tope base");
-  const teRow = objetivosRaw.find(o=>_na(o.mes)==="tope extra");
-  if(tbRow && parseNum(tbRow.valor)>0) TOPES_SHEET.base = parseNum(tbRow.valor);
-  if(teRow && parseNum(teRow.valor)>0) TOPES_SHEET.extra = parseNum(teRow.valor);
-  const objetivos = objetivosRaw.filter(o=>!["password","margen","tope base","tope extra"].includes(_na(o.mes)));
+  const tpRow = objetivosRaw.find(o=>["tope","tope base"].includes(_na(o.mes)));
+  if(tpRow && parseNum(tpRow.valor)>0) TOPE_SHEET = parseNum(tpRow.valor);
+  const objetivos = objetivosRaw.filter(o=>!["password","margen","tope","tope base","tope extra"].includes(_na(o.mes)));
 
   const reservas = reservasRes.rows.map(buildReserva).filter(Boolean);
   render(reservas, objetivos);
